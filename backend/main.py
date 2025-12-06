@@ -41,14 +41,27 @@ def get_db():
 @app.get("/", response_class=HTMLResponse)
 async def read_dashboard(request: Request, db: Session = Depends(get_db)):
     channels = db.query(Channel).all()
-    is_running = True if streamer.process else False
     
+    # Sinkronisasi Status Nyata (Engine vs Database)
+    # Ini fitur "Self-Healing": Kalau engine mati tapi DB bilang LIVE, kita koreksi.
+    global_status = False
+    for c in channels:
+        real_status = streamer.is_active(c.id)
+        if real_status:
+            global_status = True # Ada minimal 1 yang nyala
+            if c.status != "LIVE": # Koreksi DB
+                c.status = "LIVE"
+                db.commit()
+        else:
+            if c.status == "LIVE": # Engine mati, tapi DB LIVE -> Ubah jadi OFFLINE
+                c.status = "OFFLINE"
+                db.commit()
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request, 
-        "channels": channels, 
-        "is_running": is_running,
-        # Kirim info jam kerja ke HTML
-        "jam_kerja": f"{mandor.START_HOUR}:00 - {mandor.END_HOUR}:00" 
+        "channels": channels,
+        "is_running": global_status, # Cuma buat indikator global di pojok kanan atas
+        "jam_kerja": f"{mandor.START_HOUR}:00 - {mandor.END_HOUR}:00"
     })
 
 @app.post("/add-channel")
@@ -61,23 +74,38 @@ async def add_channel(channel_name: str = Form(...), channel_id: str = Form(...)
 # Tombol Manual masih tetap bisa dipakai (Override)
 @app.post("/start-stream/{channel_id}")
 async def start_stream(channel_id: int, db: Session = Depends(get_db)):
+    # 1. Cari data channel
     channel = db.query(Channel).filter(Channel.id == channel_id).first()
-    if not channel: return RedirectResponse(url="/", status_code=303)
-    
-    # Paksa Nyala (Manual)
+    if not channel:
+        return RedirectResponse(url="/", status_code=303)
+        
+    # 2. Tentukan Video & Key (Sementara Hardcoded/Dummy)
     video_path = os.path.join(ASSETS_DIR, "test.mp4")
-    streamer.start_stream(video_path, "manual-override-key")
+    
+    # KITA BUTUH FAKE KEY BERBEDA UNTUK TIAP CHANNEL (Agar simulasi valid)
+    # Di production nanti ini ambil dari kolom channel.stream_key
+    fake_key = f"abcd-1234-channel-{channel_id}" 
+    
+    # 3. NYALAKAN MESIN (Kirim ID Channel juga!)
+    streamer.start_stream(video_path, fake_key, channel_id) # <--- PERUBAHAN DISINI
+    
+    # 4. Update Status Database
     channel.status = "LIVE"
     db.commit()
+    
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/stop-stream/{channel_id}")
 async def stop_stream(channel_id: int, db: Session = Depends(get_db)):
-    streamer.stop_stream()
+    # 1. Matikan Mesin (Kirim ID Channel!)
+    streamer.stop_stream(channel_id) # <--- PERUBAHAN DISINI
+    
+    # 2. Update Status Database
     channel = db.query(Channel).filter(Channel.id == channel_id).first()
     if channel:
         channel.status = "OFFLINE"
         db.commit()
+        
     return RedirectResponse(url="/", status_code=303)
 
 if __name__ == "__main__":

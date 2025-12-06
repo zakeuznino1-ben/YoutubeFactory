@@ -1,82 +1,69 @@
 import subprocess
+import shlex
 import os
 import signal
 
-# Ini adalah Class untuk mengontrol FFmpeg
 class LiveEngine:
     def __init__(self):
-        self.process = None # Menyimpan ID proses yang sedang jalan
+        # DULU: self.process = None (Cuma muat 1)
+        # SEKARANG: Dictionary { channel_id: process_object }
+        self.active_streams = {} 
 
-    def start_stream(self, video_path, stream_key):
+    def start_stream(self, video_path, stream_key, channel_id):
         """
-        Fungsi untuk menyalakan Streaming.
-        video_path: Lokasi file video (assets/test.mp4)
-        stream_key: Kunci rahasia dari YouTube Studio
+        Menyalakan stream untuk channel tertentu.
         """
-        
-        # Cek apakah file video ada?
-        if not os.path.exists(video_path):
-            print(f"ERROR: File video tidak ditemukan di {video_path}")
-            return False
+        # 1. Cek apakah channel ini sudah live? Kalau ya, jangan nyalakan lagi.
+        if channel_id in self.active_streams:
+            print(f"WARN: Channel {channel_id} sudah aktif. Abaikan perintah.")
+            return
 
-        # Merakit Perintah FFmpeg (Resep Rahasia V3.0)
-        # Kita pakai mode 'loop' (-stream_loop -1) agar video berputar terus 24 jam
-        command = [
-            'ffmpeg',
-            '-re',                      # Baca input sesuai kecepatan asli (Native Framerate)
-            '-stream_loop', '-1',       # Loop selamanya (Infinite)
-            '-i', video_path,           # Input file
-            '-c:v', 'libx264',          # Video Codec: H.264
-            '-preset', 'veryfast',      # Preset cepat agar CPU hemat
-            '-b:v', '3000k',            # Bitrate Video (3000 Kbps - Standar HD)
-            '-maxrate', '3000k',
-            '-bufsize', '6000k',
-            '-pix_fmt', 'yuv420p',
-            '-g', '50',                 # Keyframe interval (Wajib 2 detik untuk Youtube)
-            '-c:a', 'aac',              # Audio Codec
-            '-b:a', '128k',             # Bitrate Audio
-            '-ar', '44100',
-            '-f', 'flv',                # Format FLV (Wajib untuk RTMP)
-            f'rtmp://a.rtmp.youtube.com/live2/{stream_key}' # Alamat Youtube
-        ]
-
-        print("INFO: Memulai FFmpeg Engine...")
+        command = (
+            f"ffmpeg -re -stream_loop -1 -i {video_path} "
+            f"-c:v libx264 -preset veryfast -maxrate 3000k -bufsize 6000k "
+            f"-pix_fmt yuv420p -g 50 -c:a aac -b:a 128k -ar 44100 "
+            f"-f flv rtmp://a.rtmp.youtube.com/live2/{stream_key}"
+        )
         
-        # Eksekusi perintah di background (subprocess)
-        # Kita gunakan Popen agar Python tidak macet menunggu video selesai
-        self.process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        args = shlex.split(command)
         
-        print(f"SUCCESS: Stream berjalan dengan PID {self.process.pid}")
-        return True
+        # 2. Nyalakan Process Baru
+        try:
+            # Menggunakan subprocess.PIPE agar output FFmpeg tidak mengotori terminal utama
+            process = subprocess.Popen(
+                args, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.DEVNULL
+            )
+            
+            # 3. SIMPAN KUNCI KE RAK (Dictionary)
+            self.active_streams[channel_id] = process
+            print(f"SUCCESS: Stream Channel {channel_id} ON (PID: {process.pid})")
+            
+        except Exception as e:
+            print(f"ERROR: Gagal menyalakan stream {channel_id}: {e}")
 
-    def stop_stream(self):
-        """Fungsi untuk mematikan Streaming"""
-        if self.process:
-            print("INFO: Mematikan Stream...")
-            self.process.terminate() # Kirim sinyal berhenti
-            self.process.wait()      # Pastikan benar-benar mati
-            self.process = None
-            print("SUCCESS: Stream Offline.")
+    def stop_stream(self, channel_id):
+        """
+        Mematikan stream milik channel tertentu saja.
+        """
+        # 1. Ambil process dari rak
+        process = self.active_streams.get(channel_id)
+        
+        if process:
+            # 2. Matikan Process
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill() # Paksa bunuh jika bandel
+            
+            # 3. Hapus dari catatan
+            del self.active_streams[channel_id]
+            print(f"INFO: Stream Channel {channel_id} berhasil dimatikan.")
         else:
-            print("INFO: Tidak ada stream yang aktif.")
+            print(f"WARN: Tidak ada stream aktif untuk Channel {channel_id}.")
 
-# Kode di bawah ini hanya jalan kalau file ini dijalankan langsung (untuk Tes Manual)
-if __name__ == "__main__":
-    # SETUP MANUAL UNTUK TES
-    # Ganti 'KEY_YOUTUBE_ANDA' dengan Stream Key asli jika mau tes live
-    KEY_PALSU = "abcd-1234-efgh-5678" 
-    
-    # Mencari lokasi file test.mp4 otomatis
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    VIDEO_FILE = os.path.join(BASE_DIR, "assets", "test.mp4")
-
-    engine = LiveEngine()
-    
-    # Coba nyalakan
-    try:
-        engine.start_stream(VIDEO_FILE, KEY_PALSU)
-        input("Tekan ENTER untuk mematikan stream tes ini...")
-    except KeyboardInterrupt:
-        pass
-    finally:
-        engine.stop_stream()
+    def is_active(self, channel_id):
+        """Cek status spesifik satu channel"""
+        return channel_id in self.active_streams
