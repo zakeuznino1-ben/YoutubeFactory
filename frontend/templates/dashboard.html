@@ -1,31 +1,212 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <title>Youtube Factory CEO Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Youtube Factory | Command Center</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { background-color: #f0f2f5; }
-        .card-custom { border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0d1117; /* GitHub Dark Dimmed */
+            color: #c9d1d9;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Card Styling */
+        .card-custom {
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .card-header-custom {
+            border-bottom: 1px solid #30363d;
+            padding: 15px 20px;
+        }
+
+        /* Status Animations */
+        .status-dot {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-live {
+            background-color: #ff4d4d;
+            box-shadow: 0 0 0 0 rgba(255, 77, 77, 1);
+            animation: pulse-red 2s infinite;
+        }
+        .status-ready {
+            background-color: #2ea043; /* Green */
+        }
+        .status-offline {
+            background-color: #8b949e; /* Grey */
+        }
+
+        @keyframes pulse-red {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 77, 77, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); }
+        }
+
+        /* Table Styling */
+        .table-dark-custom {
+            --bs-table-bg: #161b22;
+            --bs-table-color: #c9d1d9;
+            --bs-table-border-color: #30363d;
+        }
+        .btn-action { width: 140px; }
     </style>
 </head>
 <body>
-    <div class="container py-5">
-        <div class="d-flex justify-content-between align-items-center mb-5">
-            <div>
-                <h1 class="fw-bold text-primary">Youtube Factory</h1>
-                <p class="text-muted">Master Control V3.0 - Architect Mode</p>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary mb-4">
+        <div class="container">
+            <a class="navbar-brand font-mono fw-bold text-warning" href="#">
+                <span class="">⚡</span> Youtube Factory <span class="badge bg-secondary text-white ms-2" style="font-size: 0.6em;">V3.1 PRO</span>
+            </a>
+            <div class="d-flex align-items-center">
+                <div class="text-end me-3">
+                    <small class="text-muted d-block" style="font-size: 0.7em;">ENGINE STATUS</small>
+                    {% if is_running %}
+                        <span class="badge bg-danger bg-opacity-10 text-danger border border-danger">● SYSTEM ACTIVE</span>
+                    {% else %}
+                        <span class="badge bg-success bg-opacity-10 text-success border border-success">● SYSTEM READY</span>
+                    {% endif %}
+                </div>
             </div>
-            <div class="bg-white p-3 rounded shadow-sm">
-                <span class="d-block text-muted small">Status Server</span>
-                <strong class="text-success">ONLINE ●</strong>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card card-custom h-100">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5 class="card-title text-muted mb-1">Automation Scheduler</h5>
+                            <h3 class="font-mono mb-0">
+                                {% if jam_kerja %} {{ jam_kerja }} {% else %} 08:00 - 20:00 {% endif %}
+                            </h3>
+                            <small class="text-success">● Robot Mandor Active</small>
+                        </div>
+                        <div class="text-end text-muted opacity-50">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-clock-history" viewBox="0 0 16 16">
+                                <path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022l-.074.997zm2.004.45a7.003 7.003 0 0 0-.985-.299l.219-.976c.383.086.76.2 1.126.342l-.36.933zm1.37.71a7.01 7.01 0 0 0-.439-.27l.493-.87a8.025 8.025 0 0 1 .979.654l-.615.789a6.996 6.996 0 0 0-.418-.302zm1.834 1.79a6.99 6.99 0 0 0-.653-.796l.724-.69c.27.285.52.59.747.91l-.818.576zm.744 1.352a7.08 7.08 0 0 0-.214-.468l.893-.45a7.976 7.976 0 0 1 .45 1.088l-.95.313a7.023 7.023 0 0 0-.179-.483zm.53 2.507a6.991 6.991 0 0 0-.1-1.025l.985-.17c.067.386.106.778.116 1.17l-1 .025zm-.131 1.538c.033-.17.06-.339.081-.51l.993.123a7.957 7.957 0 0 1-.23 1.155l-.964-.267c.046-.165.086-.332.12-.501zm-.952 2.379c.184-.29.346-.594.486-.908l.914.405c-.16.36-.345.706-.555 1.038l-.845-.535zm-.964 1.205c.122-.122.239-.248.35-.378l.758.653a8.073 8.073 0 0 1-.401.432l-.707-.707z"/>
+                                <path d="M8 1a7 7 0 1 0 4.95 4.95c.05-.53.05-1.06.05-1.59v-.41a8 8 0 1 1-6 6V1z"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-custom h-100 bg-primary bg-opacity-10 border-primary">
+                    <div class="card-body text-center d-flex flex-column justify-content-center">
+                        <h6 class="text-primary mb-2">Total Channels</h6>
+                        <h1 class="display-4 fw-bold text-white">{{ channels|length }}</h1>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-custom mb-5">
+            <div class="card-header card-header-custom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold">📺 Channel Operations</h5>
+                <button class="btn btn-sm btn-outline-secondary font-mono" type="button" data-bs-toggle="collapse" data-bs-target="#addForm">
+                    + NEW CHANNEL
+                </button>
+            </div>
+            
+            <div class="collapse border-bottom border-secondary" id="addForm">
+                <div class="p-3 bg-dark">
+                    <form action="/add-channel" method="post" class="row g-2 align-items-center">
+                        <div class="col-md-4">
+                            <input type="text" name="channel_name" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Channel Name (e.g. Casha Official)" required>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" name="channel_id" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Youtube Channel ID" required>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-sm btn-success w-100">SAVE DATA</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-dark-custom table-hover align-middle mb-0">
+                    <thead>
+                        <tr class="text-uppercase small text-muted font-mono">
+                            <th class="ps-4">Channel Name</th>
+                            <th>Status</th>
+                            <th>Video Source</th>
+                            <th class="text-end pe-4">Control</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in channels %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold text-white">{{ c.channel_name }}</div>
+                                <div class="small text-muted font-mono">{{ c.channel_id }}</div>
+                            </td>
+                            <td>
+                                {% if c.status == 'LIVE' %}
+                                    <div class="d-flex align-items-center text-danger fw-bold font-mono" style="font-size: 0.85em;">
+                                        <span class="status-dot status-live"></span> LIVE STREAMING
+                                    </div>
+                                {% else %}
+                                    <div class="d-flex align-items-center text-secondary font-mono" style="font-size: 0.85em;">
+                                        <span class="status-dot status-offline"></span> OFFLINE
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary font-mono fw-normal">📄 test.mp4</span>
+                            </td>
+                            <td class="text-end pe-4">
+                                {% if c.status == 'LIVE' %}
+                                    <form action="/stop-stream/{{ c.id }}" method="post" class="d-inline">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm btn-action font-mono">
+                                            ⏹ STOP SIGNAL
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <form action="/start-stream/{{ c.id }}" method="post" class="d-inline">
+                                        {% if is_running %}
+                                            <button disabled class="btn btn-secondary btn-sm btn-action font-mono opacity-50" title="Engine Occupied">
+                                                ⌛ QUEUED
+                                            </button>
+                                        {% else %}
+                                            <button type="submit" class="btn btn-success btn-sm btn-action font-mono shadow-sm">
+                                                ▶ START LIVE
+                                            </button>
+                                        {% endif %}
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-5 text-muted">
+                                <h4 class="mb-3">📡 No Channels Found</h4>
+                                <p>Klik tombol <b>+ NEW CHANNEL</b> di pojok kanan atas untuk memulai.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
         
-        <div class="card card-custom bg-white p-5 text-center">
-            <h3>Selamat Datang, Architect.</h3>
-            <p>Sistem backend Python berhasil terhubung dengan frontend HTML.</p>
-        </div>
+        <footer class="text-center text-muted mt-5 small font-mono">
+            <p>Youtube Factory Automation System • V3.1 Distributed Architecture</p>
+        </footer>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
