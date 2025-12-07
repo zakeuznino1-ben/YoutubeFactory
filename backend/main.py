@@ -65,8 +65,19 @@ async def read_dashboard(request: Request, db: Session = Depends(get_db)):
     })
 
 @app.post("/add-channel")
-async def add_channel(channel_name: str = Form(...), channel_id: str = Form(...), db: Session = Depends(get_db)):
-    new_channel = Channel(channel_name=channel_name, channel_id=channel_id, status="OFFLINE")
+async def add_channel(
+    channel_name: str = Form(...), 
+    channel_id: str = Form(...), 
+    video_source: str = Form(...), # <--- Parameter Baru
+    db: Session = Depends(get_db)
+):
+    # Simpan nama video ke database
+    new_channel = Channel(
+        channel_name=channel_name, 
+        channel_id=channel_id, 
+        video_source=video_source, # <--- Simpan disini
+        status="OFFLINE"
+    )
     db.add(new_channel)
     db.commit()
     return RedirectResponse(url="/", status_code=303)
@@ -79,15 +90,21 @@ async def start_stream(channel_id: int, db: Session = Depends(get_db)):
     if not channel:
         return RedirectResponse(url="/", status_code=303)
         
-    # 2. Tentukan Video & Key (Sementara Hardcoded/Dummy)
-    video_path = os.path.join(ASSETS_DIR, "test.mp4")
+    # 2. Tentukan Video DARI DATABASE (Bukan Hardcoded lagi)
+    # Gunakan nama file dari DB. Jika file tidak ada, fallback ke test.mp4
+    filename = channel.video_source if channel.video_source else "test.mp4"
+    video_path = os.path.join(ASSETS_DIR, filename)
     
-    # KITA BUTUH FAKE KEY BERBEDA UNTUK TIAP CHANNEL (Agar simulasi valid)
-    # Di production nanti ini ambil dari kolom channel.stream_key
+    # Cek apakah file benar-benar ada?
+    if not os.path.exists(video_path):
+        print(f"ERROR: File {filename} tidak ditemukan! Menggunakan default.")
+        video_path = os.path.join(ASSETS_DIR, "test.mp4")
+
+    # Fake Key
     fake_key = f"abcd-1234-channel-{channel_id}" 
     
-    # 3. NYALAKAN MESIN (Kirim ID Channel juga!)
-    streamer.start_stream(video_path, fake_key, channel_id) # <--- PERUBAHAN DISINI
+    # 3. NYALAKAN MESIN
+    streamer.start_stream(video_path, fake_key, channel_id) 
     
     # 4. Update Status Database
     channel.status = "LIVE"
