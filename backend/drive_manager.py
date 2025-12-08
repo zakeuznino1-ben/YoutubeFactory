@@ -1,65 +1,81 @@
 import os
 import io
+import random
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 class DriveManager:
     def __init__(self):
-        # Konfigurasi Kunci & Akses
         self.SCOPES = ['https://www.googleapis.com/auth/drive']
         self.SERVICE_ACCOUNT_FILE = 'service_account.json'
-        
-        # Lokasi folder Assets (Tempat bongkar muat)
         self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         self.ASSETS_DIR = os.path.join(os.path.dirname(self.BASE_DIR), "assets")
         
-        # Autentikasi Robot
         self.creds = service_account.Credentials.from_service_account_file(
             os.path.join(self.BASE_DIR, self.SERVICE_ACCOUNT_FILE), 
             scopes=self.SCOPES
         )
         self.service = build('drive', 'v3', credentials=self.creds)
 
-    def download_video(self, filename):
+    def download_folder(self, folder_name):
         """
-        Mencari file berdasarkan nama di Google Drive (yang sudah di-share ke robot),
-        lalu mendownloadnya ke folder assets lokal.
+        Mencari folder di Drive, lalu mendownload SEMUA video di dalamnya.
+        Mengembalikan list path video lokal.
         """
-        print(f"[GUDANG] Mencari file '{filename}' di Google Drive...")
+        print(f"[GUDANG] Mencari folder playlist '{folder_name}'...")
         
-        # 1. Cari File ID berdasarkan Nama
-        results = self.service.files().list(
-            q=f"name = '{filename}' and mimeType contains 'video/' and trashed = false",
-            pageSize=1, fields="files(id, name)").execute()
-        items = results.get('files', [])
+        # 1. Cari ID Folder
+        q_folder = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        results = self.service.files().list(q=q_folder, pageSize=1, fields="files(id, name)").execute()
+        folders = results.get('files', [])
 
-        if not items:
-            print(f"[ERROR] File '{filename}' tidak ditemukan di Drive Robot.")
-            return False
+        if not folders:
+            print(f"[ERROR] Folder '{folder_name}' tidak ditemukan.")
+            return []
 
-        # 2. Jika ketemu, ambil ID-nya
-        file_id = items[0]['id']
-        print(f"[GUDANG] File ditemukan (ID: {file_id}). Mulai download...")
-
-        # 3. Proses Download
-        request = self.service.files().get_media(fileId=file_id)
-        destination_path = os.path.join(self.ASSETS_DIR, filename)
+        folder_id = folders[0]['id']
         
-        fh = io.FileIO(destination_path, 'wb')
-        downloader = MediaIoBaseDownload(fh, request)
+        # 2. Buat Folder Lokal
+        local_folder = os.path.join(self.ASSETS_DIR, folder_name)
+        os.makedirs(local_folder, exist_ok=True)
+
+        # 3. List Semua Video di Folder Itu
+        q_files = f"'{folder_id}' in parents and mimeType contains 'video/' and trashed = false"
+        results = self.service.files().list(q=q_files, fields="files(id, name)").execute()
+        files = results.get('files', [])
         
-        done = False
-        while done is False:
-            status, done = downloader.next_chunk()
-            print(f"   -> Downloading {int(status.progress() * 100)}% ...")
+        downloaded_files = []
 
-        print(f"[SUKSES] File mendarat di: {destination_path}")
-        return True
+        if not files:
+            print(f"[GUDANG] Folder '{folder_name}' kosong!")
+            return []
 
-# --- TEST AREA (Bisa dijalankan langsung untuk cek koneksi) ---
+        print(f"[GUDANG] Menemukan {len(files)} video dalam playlist.")
+
+        # 4. Download Satu per Satu
+        for file in files:
+            file_id = file['id']
+            file_name = file['name']
+            destination = os.path.join(local_folder, file_name)
+            
+            if not os.path.exists(destination):
+                print(f"   -> Mendownload: {file_name}...")
+                request = self.service.files().get_media(fileId=file_id)
+                fh = io.FileIO(destination, 'wb')
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while done is False:
+                    status, done = downloader.next_chunk()
+                print(f"   [OK] {file_name} Tersimpan.")
+            else:
+                print(f"   [SKIP] {file_name} sudah ada.")
+            
+            downloaded_files.append(destination)
+            
+        return downloaded_files
+
+# Test Area
 if __name__ == "__main__":
-    gudang = DriveManager()
-    # Ganti 'nama_video_di_drive.mp4' dengan nama file yang barusan Anda share
-    # Contoh: gudang.download_video('clip_A.mp4')
-    print("Sistem Gudang Siap. Panggil fungsi download_video() untuk mengetes.")
+    dm = DriveManager()
+    # dm.download_folder("playlist_natal")

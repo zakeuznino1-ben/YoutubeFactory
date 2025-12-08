@@ -1,73 +1,101 @@
 import subprocess
-import shlex
 import os
 import signal
+import sys
 
-class LiveEngine:
+class StreamEngine:
     def __init__(self):
-        # DULU: self.process = None (Cuma muat 1)
-        # SEKARANG: Dictionary { channel_id: process_object }
-        self.active_streams = {} 
+        self.active_streams = {}
+        # URL Server YouTube (Primary)
+        self.RTMP_URL = "rtmp://a.rtmp.youtube.com/live2"
 
-    def start_stream(self, video_path, stream_key, channel_id):
+    def generate_concat_file(self, video_paths, channel_id):
         """
-        Menyalakan stream dengan FILTER ANTI-COPYRIGHT (Auto-Unique).
+        Membuat file playlist.txt untuk FFmpeg agar bisa memutar banyak video tanpa jeda.
+        """
+        list_path = os.path.join(os.path.dirname(video_paths[0]), f"playlist_{channel_id}.txt")
+        
+        with open(list_path, 'w', encoding='utf-8') as f:
+            for video in video_paths:
+                # Format FFmpeg: file 'path/to/video.mp4'
+                # Escape backslash untuk Windows
+                safe_path = video.replace("\\", "/")
+                f.write(f"file '{safe_path}'\n")
+        
+        return list_path
+
+    def start_stream(self, video_source, stream_key, channel_id):
+        """
+        Menyalakan Stream.
+        video_source: Bisa berupa PATH (String) atau LIST OF PATHS (List).
         """
         if channel_id in self.active_streams:
-            print(f"WARN: Channel {channel_id} sudah aktif. Abaikan perintah.")
-            return
+            print(f"[ENGINE] Channel {channel_id} sedang jalan. Restarting...")
+            self.stop_stream(channel_id)
 
-        # --- KONFIGURASI FILTER ---
-        # 1. eq=contrast=1.03:brightness=0.03 : Sedikit menaikkan kontras & kecerahan
-        # 2. noise=alls=1:allf=t+u : Menambahkan noise statis acak (sangat tipis)
-        # Efek: Mengubah checksum/hash setiap frame video secara total
-        video_filter = "eq=contrast=1.03:brightness=0.03:saturation=1.05,noise=alls=1:allf=t+u"
+        print(f"[ENGINE] Menyalakan Channel {channel_id}...")
 
-        command = (
-            f"ffmpeg -re -stream_loop -1 -i {video_path} "
-            f"-filter_complex \"{video_filter}\" "  ### MAGIC SAUCE DISINI ###
-            f"-c:v libx264 -preset veryfast -maxrate 3000k -bufsize 6000k "
-            f"-pix_fmt yuv420p -g 50 -c:a aac -b:a 128k -ar 44100 "
-            f"-f flv rtmp://a.rtmp.youtube.com/live2/{stream_key}"
+        # LOGIKA PLAYLIST V5.0
+        # Jika input berupa List (Playlist), buat file concat.
+        if isinstance(video_source, list):
+            input_file = self.generate_concat_file(video_source, channel_id)
+            # -f concat -safe 0 -stream_loop -1 -i playlist.txt
+            input_cmd = ["-f", "concat", "-safe", "0", "-stream_loop", "-1", "-i", input_file]
+            print(f"[ENGINE] Mode Playlist Aktif: {len(video_source)} Video.")
+        else:
+            # Mode Single File (Legacy)
+            input_file = video_source
+            input_cmd = ["-stream_loop", "-1", "-i", input_file]
+            print(f"[ENGINE] Mode Single Loop Aktif.")
+
+        # COMMAND FFmpeg "OBAT KUAT" (Anti-Copyright & Stable)
+        command = [
+            "ffmpeg",
+            "-re",
+            *input_cmd,
+            "-vf", "eq=brightness=0.0:saturation=1.1,unsharp=3:3:1.0", # Filter Manipulasi Pixel
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-b:v", "3000k",
+            "-maxrate", "3000k",
+            "-bufsize", "6000k",
+            "-pix_fmt", "yuv420p",
+            "-g", "60",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-ar", "44100",
+            "-f", "flv",
+            f"{self.RTMP_URL}/{stream_key}"
+        ]
+
+        # Eksekusi di Background
+        process = subprocess.Popen(
+            command, 
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.DEVNULL
         )
         
-        args = shlex.split(command)
-        
-        try:
-            # Menggunakan subprocess.PIPE agar output FFmpeg tidak mengotori terminal utama
-            process = subprocess.Popen(
-                args, 
-                stdout=subprocess.DEVNULL, 
-                stderr=subprocess.DEVNULL
-            )
-            
-            self.active_streams[channel_id] = process
-            print(f"SUCCESS: Stream Channel {channel_id} ON (PID: {process.pid}) [SECURE MODE]")
-            
-        except Exception as e:
-            print(f"ERROR: Gagal menyalakan stream {channel_id}: {e}")
+        self.active_streams[channel_id] = process
+        print(f"SUCCESS: Stream Channel {channel_id} ON (PID: {process.pid}) [PLAYLIST MODE]")
+        return True
 
     def stop_stream(self, channel_id):
-        """
-        Mematikan stream milik channel tertentu saja.
-        """
-        # 1. Ambil process dari rak
-        process = self.active_streams.get(channel_id)
-        
-        if process:
-            # 2. Matikan Process
+        if channel_id in self.active_streams:
+            process = self.active_streams[channel_id]
             process.terminate()
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                process.kill() # Paksa bunuh jika bandel
-            
-            # 3. Hapus dari catatan
+                process.kill()
             del self.active_streams[channel_id]
-            print(f"INFO: Stream Channel {channel_id} berhasil dimatikan.")
-        else:
-            print(f"WARN: Tidak ada stream aktif untuk Channel {channel_id}.")
+            print(f"STOPPED: Channel {channel_id}")
+            return True
+        return False
 
     def is_active(self, channel_id):
-        """Cek status spesifik satu channel"""
-        return channel_id in self.active_streams
+        if channel_id in self.active_streams:
+            if self.active_streams[channel_id].poll() is None:
+                return True
+            else:
+                del self.active_streams[channel_id] 
+        return False
