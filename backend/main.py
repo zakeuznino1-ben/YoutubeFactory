@@ -112,6 +112,23 @@ def stop_stream_endpoint(channel_id: int):
         db.commit()
     db.close()
     return HTMLResponse(content='<script>window.location.href="/"</script>', status_code=200)
-
+# --- FITUR BARU V5.3: DELETE CHANNEL ---
+@app.post("/delete-channel/{channel_id}")
+def delete_channel_endpoint(channel_id: int):
+    # 1. Matikan Stream dulu jika sedang jalan
+    if streamer.is_active(channel_id):
+        streamer.stop_stream(channel_id)
+        
+    # 2. Hapus dari Database
+    db = SessionLocal()
+    channel = db.query(Channel).filter(Channel.id == channel_id).first()
+    if channel:
+        db.delete(channel)
+        db.commit()
+    db.close()
+    
+    # 3. Refresh Halaman
+    return HTMLResponse(content='<script>window.location.href="/"</script>', status_code=200)
+    
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -171,19 +171,27 @@
                                 <span class="badge bg-secondary font-mono fw-normal">📄 {{ c.video_source }}</span>
                             </td>
                             <td class="text-end pe-4">
-                                {% if c.status == 'LIVE' %}
-                                    <form action="/stop-stream/{{ c.id }}" method="post" class="d-inline">
-                                        <button type="submit" class="btn btn-outline-danger btn-sm btn-action font-mono">
-                                            ⏹ STOP SIGNAL
+                                <div class="d-flex justify-content-end gap-2">
+                                    <form action="/delete-channel/{{ c.id }}" method="post" onsubmit="return confirm('Yakin hapus channel ini?');">
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm font-mono" title="Delete Channel">
+                                            🗑️
                                         </button>
                                     </form>
-                                {% else %}
-                                    <form action="/start-stream/{{ c.id }}" method="post" class="d-inline">
-                                        <button type="submit" class="btn btn-success btn-sm btn-action font-mono shadow-sm">
-                                            ▶ START LIVE
-                                        </button>
-                                    </form>
-                                {% endif %}
+                            
+                                    {% if c.status == 'LIVE' %}
+                                        <form action="/stop-stream/{{ c.id }}" method="post">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm btn-action font-mono">
+                                                ⏹ STOP
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <form action="/start-stream/{{ c.id }}" method="post">
+                                            <button type="submit" class="btn btn-success btn-sm btn-action font-mono shadow-sm">
+                                                ▶ START
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% else %}
