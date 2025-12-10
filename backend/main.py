@@ -31,9 +31,15 @@ mandor = RobotMandor(streamer)
 def startup_event():
     mandor.start()
 
+# --- PERBAIKAN DI SINI (V5.2) ---
 @app.get("/", response_class=HTMLResponse)
 async def read_dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    # Buka Database untuk mengambil data channel
+    db = SessionLocal()
+    channels = db.query(Channel).all()
+    db.close()
+    # Kirim data 'channels' ke tampilan HTML
+    return templates.TemplateResponse("dashboard.html", {"request": request, "channels": channels})
 
 @app.get("/api/status")
 def get_status():
@@ -51,19 +57,18 @@ def get_status():
             "youtube_id": ch.youtube_id
         })
     db.close()
-    return {"system_status": "ONLINE", "version": "V5.1 Stable", "channels": data}
+    return {"system_status": "ONLINE", "version": "V5.2 Display Fix", "channels": data}
 
-# --- PERBAIKAN UTAMA DI SINI ---
 @app.post("/add-channel")
 def add_channel(
     channel_name: str = Form(...),
-    channel_id: str = Form(...),    # Menerima input 'channel_id' dari HTML
-    video_source: str = Form(...)   # Menerima input 'video_source' dari HTML
+    channel_id: str = Form(...),
+    video_source: str = Form(...)
 ):
     db = SessionLocal()
     new_channel = Channel(
         channel_name=channel_name,
-        youtube_id=channel_id,      # Disimpan ke kolom 'youtube_id' di Database
+        youtube_id=channel_id,
         video_source=video_source,
         status="OFFLINE"
     )
@@ -71,7 +76,6 @@ def add_channel(
     db.commit()
     db.refresh(new_channel)
     db.close()
-    # Redirect kembali ke dashboard setelah save
     return HTMLResponse(content='<script>window.location.href="/"</script>', status_code=200)
 
 @app.post("/start-stream/{channel_id}")
@@ -85,16 +89,12 @@ def start_stream_endpoint(channel_id: int):
     
     assets_dir = os.path.join(os.path.dirname(base_dir), "assets")
     
-    # Logika deteksi playlist/file
     if "." not in channel.video_source:
-         # Jika tidak ada titik (misal: playlist_natal), arahkan ke folder
          video_path = os.path.join(assets_dir, channel.video_source)
     else:
         video_path = os.path.join(assets_dir, channel.video_source)
 
-    # PEMASTIAN: Menggunakan KUNCI ASLI (Bukan fake_key)
     real_key = channel.youtube_id
-    
     streamer.start_stream(video_path, real_key, channel.id)
     
     channel.status = "LIVE"
@@ -105,7 +105,6 @@ def start_stream_endpoint(channel_id: int):
 @app.post("/stop-stream/{channel_id}")
 def stop_stream_endpoint(channel_id: int):
     streamer.stop_stream(channel_id)
-    
     db = SessionLocal()
     channel = db.query(Channel).filter(Channel.id == channel_id).first()
     if channel:
