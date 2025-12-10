@@ -123,14 +123,17 @@
             <div class="collapse border-bottom border-secondary" id="addForm">
                 <div class="p-3 bg-dark">
                     <form action="/add-channel" method="post" class="row g-2 align-items-center">
-                        <div class="col-md-4">
-                            <input type="text" name="channel_name" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Channel Name (e.g. Casha Official)" required>
+                        <div class="col-md-3">
+                            <input type="text" name="channel_name" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Channel Name" required>
                         </div>
-                        <div class="col-md-4">
-                            <input type="text" name="channel_id" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Youtube Channel ID" required>
+                        <div class="col-md-3">
+                            <input type="text" name="channel_id" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Youtube ID (UC...)" required>
                         </div>
-                        <div class="col-md-2">
-                            <button type="submit" class="btn btn-sm btn-success w-100">SAVE DATA</button>
+                        <div class="col-md-3">
+                            <input type="text" name="video_source" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Source (Folder Playlist atau File.mp4)" required>
+                        </div>
+                        <div class="col-md-3">
+                            <button type="submit" class="btn btn-sm btn-success w-100">SAVE CHANNEL</button>
                         </div>
                     </form>
                 </div>
@@ -165,7 +168,7 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <span class="badge bg-secondary font-mono fw-normal">📄 test.mp4</span>
+                                <span class="badge bg-secondary font-mono fw-normal">📄 {{ c.video_source }}</span>
                             </td>
                             <td class="text-end pe-4">
                                 {% if c.status == 'LIVE' %}
@@ -176,15 +179,9 @@
                                     </form>
                                 {% else %}
                                     <form action="/start-stream/{{ c.id }}" method="post" class="d-inline">
-                                        {% if is_running %}
-                                            <button disabled class="btn btn-secondary btn-sm btn-action font-mono opacity-50" title="Engine Occupied">
-                                                ⌛ QUEUED
-                                            </button>
-                                        {% else %}
-                                            <button type="submit" class="btn btn-success btn-sm btn-action font-mono shadow-sm">
-                                                ▶ START LIVE
-                                            </button>
-                                        {% endif %}
+                                        <button type="submit" class="btn btn-success btn-sm btn-action font-mono shadow-sm">
+                                            ▶ START LIVE
+                                        </button>
                                     </form>
                                 {% endif %}
                             </td>
