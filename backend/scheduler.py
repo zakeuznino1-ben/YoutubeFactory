@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import os
+import glob  # <--- LIBRARY BARU (Untuk Scan Folder Lokal)
 from database import SessionLocal, Channel
 from drive_manager import DriveManager 
 from notifier import TelegramNotifier
@@ -17,7 +18,6 @@ class RobotMandor:
 
     def cek_jadwal(self):
         sekarang = datetime.now()
-        # jam_sekarang = sekarang.hour (Tidak dipakai sementara)
         # print(f"[MANDOR] Cek Rutin jam {sekarang.strftime('%H:%M:%S')}...") 
 
         db = SessionLocal()
@@ -32,30 +32,38 @@ class RobotMandor:
         for channel in channels:
             if is_working_hours:
                 # Cek jika status LIVE tapi mesin mati
-                # Atau jika di database LIVE tapi di engine tidak terdaftar
                 if channel.status == "LIVE": 
                     if not self.engine.is_active(channel.id):
                         print(f"   -> 🚨 WAKTUNYA KERJA! Menyalakan {channel.channel_name}...")
-                        self.lapor.send_message(f"📢 <b>STARTING STREAM (V5.5)</b>\nChannel: {channel.channel_name}\nMode: Playlist Engine")
+                        self.lapor.send_message(f"📢 <b>STARTING STREAM (V5.6)</b>\nChannel: {channel.channel_name}\nMode: Hybrid Scan")
 
                         input_name = channel.video_source if channel.video_source else "test.mp4"
-                        
-                        # LOGIKA BARU V5.0: DETEKSI PLAYLIST vs FILE
                         final_source = None
                         
-                        # Cek 1: Apakah ini NAMA FOLDER playlist? (misal: playlist_natal)
-                        if "playlist" in input_name.lower():
-                            print(f"   [LOGIC] Terdeteksi mode Playlist: {input_name}")
-                            # Download satu folder penuh
-                            playlist_files = self.gudang.download_folder(input_name)
-                            
-                            if playlist_files:
-                                final_source = playlist_files # Kirim List ke Engine
-                                self.lapor.send_message(f"📂 <b>PLAYLIST READY</b>\nFolder: {input_name}\nJumlah: {len(playlist_files)} Video.")
-                            else:
-                                print(f"   [ERROR] Playlist kosong/gagal.")
+                        # --- LOGIKA BARU V5.6: HYBRID SCAN (CLOUD + LOCAL) ---
                         
-                        # Cek 2: Jika bukan playlist, perlakukan sebagai FILE BIASA
+                        # Cek 1: Apakah ini Playlist?
+                        if "playlist" in input_name.lower():
+                            # A. Langkah Cloud: Cek & Download dari Drive (Sama seperti V5.5)
+                            # Ini penting agar jika ada file dari Mac/HP tetap masuk
+                            self.gudang.download_folder(input_name)
+                            
+                            # B. Langkah Local: SCAN ISI FOLDER PC (Ini tambahannya!)
+                            # Mandor menghitung ulang semua file .mp4 yang ada di folder komputer
+                            local_playlist_path = os.path.join(assets_dir, input_name)
+                            
+                            # Cari semua file berakhiran .mp4 di dalam folder itu
+                            all_files = glob.glob(os.path.join(local_playlist_path, "*.mp4"))
+                            
+                            if all_files:
+                                final_source = all_files # Override source dengan data real di PC
+                                jumlah_video = len(all_files)
+                                print(f"   [HYBRID] Total Video ditemukan di PC: {jumlah_video}")
+                                self.lapor.send_message(f"📂 <b>PLAYLIST UPDATE</b>\nSource: {input_name}\nTotal: {jumlah_video} Video (Siap Putar).")
+                            else:
+                                print(f"   [ERROR] Folder playlist lokal kosong.")
+                        
+                        # Cek 2: Single File (Logika Lama V5.5 Tetap Ada)
                         if not final_source:
                             video_path = os.path.join(assets_dir, input_name)
                             # Cek apakah file ada, jika tidak, coba download
@@ -68,20 +76,18 @@ class RobotMandor:
 
                         # EKSEKUSI JIKA SOURCE ADA
                         if final_source:
-                            # --- PERBAIKAN UTAMA DI SINI ---
-                            # Menggunakan 'youtube_id' sesuai database, bukan 'channel_id'
+                            # Menggunakan 'youtube_id' (Fix V5.5 dipertahankan)
                             real_key = channel.youtube_id 
                             
                             self.engine.start_stream(final_source, real_key, channel.id)
                             
                             if self.engine.is_active(channel.id):
                                 self.lapor.send_message(f"✅ <b>STREAM LIVE</b>\nChannel: {channel.channel_name}")
-                                # Status sudah LIVE, tidak perlu update db kecuali error
                         else:
                             self.lapor.send_message(f"⚠️ <b>GAGAL TOTAL</b>\nTidak ada file/playlist yang bisa diputar.")
 
             else:
-                # Logika Stop (Jika di luar jam kerja - saat ini dinonaktifkan via is_working_hours=True)
+                # Logika Stop (Jika di luar jam kerja)
                 if channel.status == "LIVE":
                     self.engine.stop_stream(channel.id)
                     channel.status = "OFFLINE"
@@ -89,7 +95,7 @@ class RobotMandor:
         db.close()
 
     def start(self):
-        self.scheduler.add_job(self.cek_jadwal, 'interval', seconds=30) # Cek tiap 30 detik agar responsif
+        self.scheduler.add_job(self.cek_jadwal, 'interval', seconds=30)
         self.scheduler.start()
-        self.lapor.send_message("🏭 <b>SYSTEM V5.5 ONLINE</b>\nFixed: Key Attribute Error.\nSiap bertugas.")
-        print("INFO: Robot Mandor V5.5 (Full Features) sudah aktif.")
+        self.lapor.send_message("🏭 <b>SYSTEM V5.6 ONLINE</b>\nUpgrade: Hybrid Scan (Local+Cloud).\nSiap bertugas.")
+        print("INFO: Robot Mandor V5.6 (Hybrid Scan) sudah aktif.")
