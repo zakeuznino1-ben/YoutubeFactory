@@ -1,82 +1,115 @@
 import os
 import random
-from moviepy.editor import VideoFileClip, AudioFileClip, vfx, concatenate_audioclips
+from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, CompositeAudioClip, concatenate_audioclips, vfx
+from brain import ask_gemini
+from narrator import buat_suara
 
 # KONFIGURASI PABRIK
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INPUT_FOOTAGE = os.path.join(BASE_DIR, "factory_line", "raw_footage")
 INPUT_MUSIC = os.path.join(BASE_DIR, "factory_line", "raw_music")
 OUTPUT_DIR = os.path.join(BASE_DIR, "assets")
+# Pastikan nama font sesuai dengan file yang ada di folder assets/fonts
+FONT_PATH = os.path.join(BASE_DIR, "assets", "fonts", "Montserrat-ExtraBold.ttf")
 
 def get_files_by_keyword(folder, extension, keyword=None):
-    """Mencari file dalam folder yang mengandung keyword tertentu"""
     files = [f for f in os.listdir(folder) if f.endswith(extension)]
     if keyword:
-        # Filter file yang nama filenya mengandung keyword (case insensitive)
         files = [f for f in files if keyword.lower() in f.lower()]
     return files
 
 def render_video(output_filename="hasil.mp4", target_duration=60, keyword_filter=None, mode="long"):
-    print(f"\n🏭 [FACTORY] Memulai produksi. Tema: {keyword_filter} | Mode: {mode.upper()}")
+    print(f"\n🏭 [FACTORY V3.0] Memulai produksi. Tema: {keyword_filter} | Mode: {mode.upper()}")
     
-    # 1. Cari Bahan Baku Sesuai Tema
+    # 1. Cari Bahan Baku
     footage_files = get_files_by_keyword(INPUT_FOOTAGE, ('.mp4', '.mov'), keyword_filter)
     music_files = get_files_by_keyword(INPUT_MUSIC, ('.mp3', '.wav'), keyword_filter)
 
     if not footage_files or not music_files:
-        print(f"❌ Error: Bahan baku kurang untuk keyword '{keyword_filter}'!")
+        print(f"❌ Error: Bahan baku kurang!")
         return
 
-    # 2. Racik Resep (Ambil Acak)
     selected_video_name = random.choice(footage_files)
     selected_music_name = random.choice(music_files)
     
     video_path = os.path.join(INPUT_FOOTAGE, selected_video_name)
     music_path = os.path.join(INPUT_MUSIC, selected_music_name)
 
-    print(f"   -> Video Source : {selected_video_name}")
-    print(f"   -> Audio Source : {selected_music_name}")
-
     try:
-        # 3. Load File
+        # 2. Load Video & Musik Background
         clip = VideoFileClip(video_path)
-        audio = AudioFileClip(music_path)
+        bg_music = AudioFileClip(music_path)
+        
+        # Kecilkan volume musik background (30%) agar suara narator terdengar jelas
+        bg_music = bg_music.volumex(0.3) 
 
-        # --- LOGIKA BARU V2.0: SHORTS (VERTICAL CROP) ---
+        # 3. INTELLIGENCE LAYER (Hanya untuk Shorts)
+        quotes_text = ""
+        voice_audio = None
+        
         if mode == "shorts":
-            # Target: 9:16 (Biasanya 1080x1920)
+            # A. Minta Otak Berpikir (Brain 2.5 Flash)
+            quotes_text = ask_gemini(keyword_filter)
+            
+            # B. Minta Mulut Bicara (TTS)
+            voice_path = buat_suara(quotes_text, "temp_voice.mp3")
+            if voice_path:
+                voice_audio = AudioFileClip(voice_path)
+
+            # C. Resize & Crop Video ke 9:16
             print("   -> ✂️ Mengubah format ke VERTICAL (9:16)...")
-            
-            # Strategi Center Crop:
-            # 1. Pastikan tingginya 1920 pixel (agar HD)
-            # 2. Potong bagian tengah selebar 1080 pixel
-            
-            if clip.w > clip.h: # Jika Video Landscape
+            if clip.w > clip.h:
                 new_height = 1920
-                clip = clip.resize(height=new_height) 
-                # Rumus crop tengah: (LebarBaru / 2) - (1080 / 2)
+                clip = clip.resize(height=new_height)
                 center_x = clip.w / 2
                 clip = clip.crop(x1=center_x - 540, y1=0, width=1080, height=1920)
             else:
-                # Jika video aslinya sudah vertikal/kotak, resize lebar ke 1080
                 clip = clip.resize(width=1080)
-                # Pastikan tinggi tidak kurang dari 1920 (opsional, tapi aman)
-                # clip = clip.crop(width=1080, height=1920, x_center=clip.w/2, y_center=clip.h/2)
 
-        # 4. LOGIKA LOOPING (Sama seperti V1.0)
-        if audio.duration < target_duration:
-            n_loops = int(target_duration // audio.duration) + 1
-            audio = concatenate_audioclips([audio] * n_loops)
-        
-        final_audio = audio.subclip(0, target_duration)
+        # 4. LOGIKA LOOPING VIDEO & MUSIK
+        # Loop Video
         final_clip = clip.loop(duration=target_duration)
+        
+        # Loop Musik Background
+        if bg_music.duration < target_duration:
+            n_loops = int(target_duration // bg_music.duration) + 1
+            bg_music = concatenate_audioclips([bg_music] * n_loops)
+        bg_music = bg_music.subclip(0, target_duration)
+
+        # 5. MIXING AUDIO (Background + Voice Over)
+        final_audio = bg_music
+        if voice_audio:
+            # Voice over dimulai di detik ke-1 (setelah fade in)
+            voice_audio = voice_audio.set_start(1)
+            final_audio = CompositeAudioClip([bg_music, voice_audio])
+        
         final_clip = final_clip.set_audio(final_audio)
 
-        # Fade Effect (Supaya halus)
+        # 6. TEXT OVERLAY (Hanya Shorts)
+        if mode == "shorts" and quotes_text:
+            print(f"   -> ✍️ Menulis Teks: {quotes_text}")
+            # Buat Teks di Tengah
+            txt_clip = TextClip(
+                quotes_text, 
+                font=FONT_PATH, 
+                fontsize=60, # Ukuran font
+                color='white', 
+                size=(900, None), # Lebar maksimum 900px (agar tidak nabrak pinggir)
+                method='caption', # Auto wrap text (turun baris otomatis)
+                stroke_color='black', 
+                stroke_width=3
+            )
+            # Posisi di tengah (center), durasi full
+            txt_clip = txt_clip.set_position('center').set_duration(target_duration)
+            
+            # Gabungkan Video + Teks
+            final_clip = CompositeVideoClip([final_clip, txt_clip])
+
+        # Fade Effect
         final_clip = final_clip.fx(vfx.fadein, 1).fx(vfx.fadeout, 1)
         final_clip = final_clip.audio_fadein(1).audio_fadeout(1)
 
-        # 5. Render / Export
+        # 7. RENDER FINAL
         output_path = os.path.join(OUTPUT_DIR, output_filename)
         print(f"   -> Rendering ke: {output_filename} ...")
         
@@ -94,22 +127,17 @@ def render_video(output_filename="hasil.mp4", target_duration=60, keyword_filter
         print(f"❌ Error Produksi: {e}")
 
 if __name__ == "__main__":
-    print("--- CONTENT FACTORY V2.0 (MULTI-FORMAT) ---")
+    print("--- CONTENT FACTORY V3.0 (AI POWERED) ---")
+    tema = input("1. Tema (christmas/rain): ").strip()
+    jenis = input("2. Jenis (long/shorts): ").strip().lower()
     
-    # Input User Baru
-    tema = input("1. Masukkan Tema (christmas / rain): ").strip()
-    jenis = input("2. Jenis Output (long / shorts): ").strip().lower()
-    
-    # Default Logic Durasi
-    durasi = 60 # Default 1 menit
+    durasi = 60
     if jenis == "shorts":
-        durasi = 59 # Shorts maksimal 60 detik, kita set 59 biar aman
-        print("   -> Mode Shorts terdeteksi: Durasi otomatis set ke 59 detik.")
+        durasi = 59 
+        print("   -> Mode Shorts: Durasi set 59 detik.")
     else:
-        durasi_input = input("3. Durasi detik (enter utk default 60): ").strip()
-        if durasi_input: durasi = int(durasi_input)
+        d_in = input("3. Durasi (enter=60): ").strip()
+        if d_in: durasi = int(d_in)
 
-    # Nama File Otomatis
-    nama_file = f"render_{tema}_{jenis}_v1.mp4"
-    
-    render_video(output_filename=nama_file, target_duration=durasi, keyword_filter=tema, mode=jenis)
+    nama_file = f"render_{tema}_{jenis}_AI.mp4"
+    render_video(nama_file, durasi, tema, jenis)
