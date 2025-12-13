@@ -1,0 +1,13 @@
+import google.generativeai as genai
+
+# Pakai API Key Anda yang tadi
+API_KEY = "AIzaSyBIrRVBi3f9GhhD1Viy6dNLyqHTz56gRJI" 
+genai.configure(api_key=API_KEY)
+
+print("--- SEDANG MENGAMBIL DAFTAR MODEL YANG TERSEDIA ---")
+try:
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            print(f"✅ Tersedia: {m.name}")
+except Exception as e:
+    print(f"❌ Error Fatal: {e}")
