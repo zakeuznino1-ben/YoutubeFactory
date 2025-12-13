@@ -1,6 +1,6 @@
 import os
 import random
-from moviepy.editor import VideoFileClip, AudioFileClip, vfx, CompositeAudioClip, concatenate_audioclips
+from moviepy.editor import VideoFileClip, AudioFileClip, vfx, concatenate_audioclips
 
 # KONFIGURASI PABRIK
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,22 +16,18 @@ def get_files_by_keyword(folder, extension, keyword=None):
         files = [f for f in files if keyword.lower() in f.lower()]
     return files
 
-def render_video(output_filename="hasil_render.mp4", target_duration=60, keyword_filter=None):
-    print(f"\n🏭 [FACTORY] Memulai produksi. Tema: {keyword_filter if keyword_filter else 'ACAK'}")
+def render_video(output_filename="hasil.mp4", target_duration=60, keyword_filter=None, mode="long"):
+    print(f"\n🏭 [FACTORY] Memulai produksi. Tema: {keyword_filter} | Mode: {mode.upper()}")
     
     # 1. Cari Bahan Baku Sesuai Tema
     footage_files = get_files_by_keyword(INPUT_FOOTAGE, ('.mp4', '.mov'), keyword_filter)
     music_files = get_files_by_keyword(INPUT_MUSIC, ('.mp3', '.wav'), keyword_filter)
 
-    if not footage_files:
-        print(f"❌ Error: Tidak ada video dengan kata kunci '{keyword_filter}'!")
-        return
-    if not music_files:
-        print(f"❌ Error: Tidak ada musik dengan kata kunci '{keyword_filter}'!")
+    if not footage_files or not music_files:
+        print(f"❌ Error: Bahan baku kurang untuk keyword '{keyword_filter}'!")
         return
 
-    # 2. Racik Resep (Ambil 1 Video & 1 Musik Acak)
-    # Tips: Nanti bisa di-upgrade jadi stitch banyak video, tapi skrg 1 loop dulu.
+    # 2. Racik Resep (Ambil Acak)
     selected_video_name = random.choice(footage_files)
     selected_music_name = random.choice(music_files)
     
@@ -40,35 +36,47 @@ def render_video(output_filename="hasil_render.mp4", target_duration=60, keyword
 
     print(f"   -> Video Source : {selected_video_name}")
     print(f"   -> Audio Source : {selected_music_name}")
-    print(f"   -> Target Durasi: {target_duration} detik")
 
     try:
-        # 3. Proses Memasak (Editing)
+        # 3. Load File
         clip = VideoFileClip(video_path)
         audio = AudioFileClip(music_path)
 
-        # LOGIKA AUDIO LOOPING
-        # Jika durasi lagu lebih pendek dari target video, lagu harus di-loop / disambung
+        # --- LOGIKA BARU V2.0: SHORTS (VERTICAL CROP) ---
+        if mode == "shorts":
+            # Target: 9:16 (Biasanya 1080x1920)
+            print("   -> ✂️ Mengubah format ke VERTICAL (9:16)...")
+            
+            # Strategi Center Crop:
+            # 1. Pastikan tingginya 1920 pixel (agar HD)
+            # 2. Potong bagian tengah selebar 1080 pixel
+            
+            if clip.w > clip.h: # Jika Video Landscape
+                new_height = 1920
+                clip = clip.resize(height=new_height) 
+                # Rumus crop tengah: (LebarBaru / 2) - (1080 / 2)
+                center_x = clip.w / 2
+                clip = clip.crop(x1=center_x - 540, y1=0, width=1080, height=1920)
+            else:
+                # Jika video aslinya sudah vertikal/kotak, resize lebar ke 1080
+                clip = clip.resize(width=1080)
+                # Pastikan tinggi tidak kurang dari 1920 (opsional, tapi aman)
+                # clip = clip.crop(width=1080, height=1920, x_center=clip.w/2, y_center=clip.h/2)
+
+        # 4. LOGIKA LOOPING (Sama seperti V1.0)
         if audio.duration < target_duration:
-            # Hitung butuh berapa kali putar
             n_loops = int(target_duration // audio.duration) + 1
-            # Sambung lagu berulang-ulang
             audio = concatenate_audioclips([audio] * n_loops)
         
-        # Potong audio sesuai durasi target pas
         final_audio = audio.subclip(0, target_duration)
-
-        # LOGIKA VIDEO LOOPING
         final_clip = clip.loop(duration=target_duration)
-        
-        # Tempel Audio
         final_clip = final_clip.set_audio(final_audio)
 
-        # Fade In/Out (Video & Audio)
+        # Fade Effect (Supaya halus)
         final_clip = final_clip.fx(vfx.fadein, 1).fx(vfx.fadeout, 1)
         final_clip = final_clip.audio_fadein(1).audio_fadeout(1)
 
-        # 4. Render / Export
+        # 5. Render / Export
         output_path = os.path.join(OUTPUT_DIR, output_filename)
         print(f"   -> Rendering ke: {output_filename} ...")
         
@@ -76,23 +84,32 @@ def render_video(output_filename="hasil_render.mp4", target_duration=60, keyword
             output_path, 
             codec="libx264", 
             audio_codec="aac", 
-            fps=24,     # 24fps cukup untuk cinematic
-            preset="ultrafast", # Ganti 'medium' kalau mau kualitas bagus (tapi lama)
+            fps=24,
+            preset="ultrafast",
             threads=4
         )
-        print(f"✅ [FACTORY] Sukses! File tersimpan di: assets/{output_filename}")
+        print(f"✅ [FACTORY] Sukses! File: assets/{output_filename}")
         
     except Exception as e:
         print(f"❌ Error Produksi: {e}")
 
 if __name__ == "__main__":
-    # MENU INTERAKTIF SAAT DIJALANKAN
-    print("--- CONTENT FACTORY V1.0 ---")
-    tema = input("Masukkan Tema (christmas / rain): ").strip()
-    durasi = input("Durasi detik (contoh 30): ").strip()
-    nama_file = input("Nama Output (contoh hasil.mp4): ").strip()
+    print("--- CONTENT FACTORY V2.0 (MULTI-FORMAT) ---")
     
-    if not durasi: durasi = 30
-    if not nama_file: nama_file = f"render_{tema}.mp4"
+    # Input User Baru
+    tema = input("1. Masukkan Tema (christmas / rain): ").strip()
+    jenis = input("2. Jenis Output (long / shorts): ").strip().lower()
     
-    render_video(output_filename=nama_file, target_duration=int(durasi), keyword_filter=tema)
+    # Default Logic Durasi
+    durasi = 60 # Default 1 menit
+    if jenis == "shorts":
+        durasi = 59 # Shorts maksimal 60 detik, kita set 59 biar aman
+        print("   -> Mode Shorts terdeteksi: Durasi otomatis set ke 59 detik.")
+    else:
+        durasi_input = input("3. Durasi detik (enter utk default 60): ").strip()
+        if durasi_input: durasi = int(durasi_input)
+
+    # Nama File Otomatis
+    nama_file = f"render_{tema}_{jenis}_v1.mp4"
+    
+    render_video(output_filename=nama_file, target_duration=durasi, keyword_filter=tema, mode=jenis)
