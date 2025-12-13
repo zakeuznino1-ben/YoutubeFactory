@@ -11,7 +11,7 @@ def ask_gemini(tema):
     """Meminta Gemini membuatkan Quotes pendek berdasarkan tema"""
     print(f"🧠 [BRAIN] Memikirkan quotes tentang '{tema}'...")
     
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     # Prompt Engineering Khusus Gen Z / Shorts
     prompt = (
